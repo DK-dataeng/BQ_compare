@@ -1,0 +1,73 @@
+WITH patient_bundle AS (
+    -- Extract the Patient resource from the Bundle in Table 1
+    SELECT 
+        JSON_EXTRACT_SCALAR(b.resource, '$.id') AS patient_id, 
+        JSON_EXTRACT_SCALAR(b.resource, '$.name[0].given[0]') AS givenname_table1,
+        JSON_EXTRACT_SCALAR(b.resource, '$.name[0].family') AS lastname_table1,
+        JSON_EXTRACT_SCALAR(b.resource, '$.birthDate') AS birthdate_table1,
+        JSON_EXTRACT_SCALAR(b.resource, '$.gender') AS gender_table1,
+        JSON_EXTRACT_SCALAR(b.resource, '$.address[0].city') AS city_table1,
+        JSON_EXTRACT_SCALAR(b.resource, '$.address[0].postalCode') AS postalcode_table1
+    FROM `edp-preprod-storage.edp_ent_cdr_ods_ppd_staging.Bundle` AS bundle
+    CROSS JOIN UNNEST(JSON_EXTRACT_ARRAY(bundle.bundle, '$.entry')) AS b
+    WHERE JSON_EXTRACT_SCALAR(b.resource, '$.resourceType') = 'Patient'
+), patient_comparison AS (
+    -- Extract the patient data from Table 2
+    SELECT 
+        pt.patient_id,
+        pt.givenname AS givenname_table2,
+        pt.lastname AS lastname_table2,
+        pt.birthDate AS birthdate_table2,
+        pt.gender AS gender_table2,
+        pt.city AS city_table2,
+        pt.postalCode AS postalcode_table2
+    FROM `edp-preprod-storage.edp_ent_cdr_ods_stg.Patient` pt
+)
+-- Compare fields for detailed attribute matching
+SELECT 
+    'Patient' AS resource,
+    'givenname' AS attribute,
+    givenname_table1 AS table_1_value,
+    givenname_table2 AS table_2_value,
+    IF(givenname_table1 = givenname_table2, 'Y', 'N') AS match
+FROM patient_comparison
+UNION ALL
+SELECT 
+    'Patient' AS resource,
+    'lastname' AS attribute,
+    lastname_table1 AS table_1_value,
+    lastname_table2 AS table_2_value,
+    IF(lastname_table1 = lastname_table2, 'Y', 'N') AS match
+FROM patient_comparison
+UNION ALL
+SELECT 
+    'Patient' AS resource,
+    'birthdate' AS attribute,
+    birthdate_table1 AS table_1_value,
+    birthdate_table2 AS table_2_value,
+    IF(birthdate_table1 = birthdate_table2, 'Y', 'N') AS match
+FROM patient_comparison
+UNION ALL
+SELECT 
+    'Patient' AS resource,
+    'gender' AS attribute,
+    gender_table1 AS table_1_value,
+    gender_table2 AS table_2_value,
+    IF(gender_table1 = gender_table2, 'Y', 'N') AS match
+FROM patient_comparison
+UNION ALL
+SELECT 
+    'Patient' AS resource,
+    'city' AS attribute,
+    city_table1 AS table_1_value,
+    city_table2 AS table_2_value,
+    IF(city_table1 = city_table2, 'Y', 'N') AS match
+FROM patient_comparison
+UNION ALL
+SELECT 
+    'Patient' AS resource,
+    'postalCode' AS attribute,
+    postalcode_table1 AS table_1_value,
+    postalcode_table2 AS table_2_value,
+    IF(postalcode_table1 = postalcode_table2, 'Y', 'N') AS match
+FROM patient_comparison;
