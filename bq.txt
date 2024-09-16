@@ -1,1 +1,147 @@
+To implement a Proof of Concept (POC) for comparing FHIR resources from IFS (FHIR API) and BQ (BigQuery) as you described, I'll break it down into several steps with a corresponding Python code outline.
 
+### Steps for the POC
+
+1. **Input Configuration:**
+   - Read the filename from a text file.
+   - Fetch the FHIR bundle based on the filename via an API call.
+   
+2. **BigQuery Data Extraction:**
+   - Pull the BQ data for the same resource type from a staging table.
+   
+3. **Join and Compare Data:**
+   - Normalize and join the DataFrame from both sources.
+   - Compare each attribute and create reports.
+
+4. **Generate Reports:**
+   - **Element Compare Report**: Contains filename, resource type, attribute, IFS value, FFS value, validation status.
+   - **Resource Count Report**: Contains resource type, count, and identifiers from IFS and FFS.
+
+5. **Configurations:**
+   - Allow configuring the resource type to process (one or all).
+   - Output should be saved in a designated folder.
+
+### Example Code Outline
+
+#### Step 1: Read Input Filename and Configure API
+
+```python
+import requests
+import pandas as pd
+import json
+from google.cloud import bigquery
+
+# Configuration
+output_folder = "output/"
+resource_type_to_process = "Condition"  # Or set this to 'all' to process all resource types
+input_filename = "input_file.txt"  # Text file containing the filename for FHIR API
+
+# Read filename from text file
+with open(input_filename, 'r') as file:
+    fhir_bundle_id = file.readline().strip()
+
+# Configure FHIR API
+FHIR_SERVER_URL = "https://fhir-server-url/path-to-fhir-endpoint"
+TOKEN = "your-auth-token"
+
+# API call to get FHIR Bundle based on filename
+response = requests.get(
+    f"{FHIR_SERVER_URL}/Bundle/{fhir_bundle_id}",
+    headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/fhir+json"}
+)
+
+# Parse the FHIR Bundle data
+if response.status_code == 200:
+    fhir_data = response.json()
+    print(f"Successfully pulled FHIR data for Bundle ID: {fhir_bundle_id}")
+else:
+    print(f"Failed to pull FHIR data for Bundle ID: {fhir_bundle_id}")
+```
+
+#### Step 2: Pull BigQuery View of Resource (STG Table)
+
+```python
+# BigQuery Client setup
+client = bigquery.Client()
+
+# Query the staging table in BigQuery
+query = f"""
+SELECT * FROM `project.dataset.staging_table`
+WHERE resourceType = '{resource_type_to_process}'
+"""
+bq_data = client.query(query).to_dataframe()
+
+# Filter the data to match the source
+source_system = fhir_bundle_id  # Or another key from the FHIR data
+bq_filtered_data = bq_data[bq_data['sourceSystem'] == source_system]
+
+print(f"BigQuery data for resource type: {resource_type_to_process} loaded.")
+```
+
+#### Step 3: Normalize and Compare Data
+
+- Extract relevant fields from FHIR Bundle and BQ table for comparison.
+- Join data on common identifiers and compare.
+
+```python
+# Normalize the FHIR Condition resources (or any other resource type)
+condition_resources = [
+    entry['resource'] for entry in fhir_data['entry']
+    if entry['resource']['resourceType'] == resource_type_to_process
+]
+
+# Normalize to a DataFrame
+df_fhir = pd.json_normalize(condition_resources, sep='.')
+
+# Join FHIR and BigQuery data on common key (e.g., 'id')
+comparison_df = pd.merge(df_fhir, bq_filtered_data, how='outer', on='id', suffixes=('_fhir', '_bq'))
+
+# Example comparison of a single column ('code')
+comparison_df['validation'] = comparison_df.apply(
+    lambda row: "Match" if row['code_fhir'] == row['code_bq'] else "Mismatch", axis=1
+)
+```
+
+#### Step 4: Generate Reports
+
+- **Element Compare Report**: Each resource’s attributes are compared, and mismatches are logged.
+- **Resource Count Report**: The count of resources in both IFS (FHIR) and FFS (BigQuery).
+
+```python
+# Element Compare Report
+element_compare_report = comparison_df[['id', 'resourceType', 'code_fhir', 'code_bq', 'validation']]
+element_compare_report.to_csv(f"{output_folder}/element_compare_report.csv", index=False)
+
+# Resource Count Report
+ifs_count = df_fhir.shape[0]
+ffs_count = bq_filtered_data.shape[0]
+report_data = {
+    'filename': [fhir_bundle_id],
+    'resourceType': [resource_type_to_process],
+    'ifs_count': [ifs_count],
+    'ffs_count': [ffs_count],
+    'ifs_identifier': [list(df_fhir['id'])],
+    'ffs_identifier': [list(bq_filtered_data['id'])]
+}
+
+count_report = pd.DataFrame(report_data)
+count_report.to_csv(f"{output_folder}/resource_count_report.csv", index=False)
+
+print("Reports generated and saved.")
+```
+
+### Step 5: Configuration
+
+Make sure the following configurations are set:
+1. **Input File**: Contains the FHIR bundle filename.
+2. **Output Folder**: All reports are saved in the `output` folder.
+3. **Resource Type**: Set to either a specific resource (e.g., "Condition") or `"all"` to process all types.
+4. **BigQuery Queries**: Customize queries as needed based on the schema of the staging table.
+
+### Step 6: Full Code Execution
+
+After configuring the input and output folders, resource type, and queries, run the code to compare FHIR resources with the BigQuery staging table. The results will be saved as CSV reports in the output folder.
+
+---
+
+Let me know if you need help with any part of this, or specific schema examples for the data comparison!
