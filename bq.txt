@@ -1,1 +1,65 @@
 
+from google.cloud import bigquery
+
+# Initialize BigQuery client
+client = bigquery.Client()
+
+# List of tables to query
+tables = [
+    "project.dataset.table1",
+    "project.dataset.table2",
+    "project.dataset.table3"
+]
+
+# Function to check if the 'category' field exists and whether it's nested
+def get_category_structure(schema):
+    for field in schema:
+        if field.name == 'category':
+            return 'regular'
+        elif field.field_type == 'RECORD':
+            # If it's a nested structure, check within it
+            for nested_field in field.fields:
+                if nested_field.name == 'category':
+                    return 'nested'
+    return 'not_found'
+
+# Loop over each table
+for table in tables:
+    # Get table schema
+    try:
+        table_ref = client.get_table(table)
+        schema = table_ref.schema
+    except Exception as e:
+        print(f"Error accessing schema for {table}: {e}")
+        continue
+    
+    # Check if 'category' is a regular or nested field
+    category_structure = get_category_structure(schema)
+    
+    # Handle each case accordingly
+    if category_structure == 'regular':
+        query = f"""
+        SELECT category 
+        FROM `{table}`
+        LIMIT 10
+        """
+    elif category_structure == 'nested':
+        query = f"""
+        SELECT details.category 
+        FROM `{table}`
+        LIMIT 10
+        """
+    else:
+        print(f"'category' field not found in {table}")
+        continue
+    
+    # Execute the query if the 'category' field is found
+    try:
+        query_job = client.query(query)
+        results = query_job.result()
+        
+        print(f"Results from {table}:")
+        for row in results:
+            print(row)
+    except Exception as e:
+        print(f"Error running query on {table}: {e}")
