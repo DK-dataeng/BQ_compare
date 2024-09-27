@@ -1,15 +1,14 @@
-
 from google.cloud import bigquery
 
 # Initialize BigQuery client
 client = bigquery.Client()
 
-# List of tables to query
-tables = [
-    "project.dataset.table1",
-    "project.dataset.table2",
-    "project.dataset.table3"
-]
+# Specify the dataset
+dataset_id = "project.dataset"  # Replace with your dataset ID
+dataset_ref = client.dataset(dataset_id)
+
+# Get the list of tables
+tables = list(client.list_tables(dataset_ref))
 
 # Function to check if the 'category' field exists and whether it's nested
 def get_category_structure(schema):
@@ -25,12 +24,14 @@ def get_category_structure(schema):
 
 # Loop over each table
 for table in tables:
+    table_id = f"{dataset_id}.{table.table_id}"
+    
     # Get table schema
     try:
-        table_ref = client.get_table(table)
+        table_ref = client.get_table(table_id)
         schema = table_ref.schema
     except Exception as e:
-        print(f"Error accessing schema for {table}: {e}")
+        print(f"Error accessing schema for {table_id}: {e}")
         continue
     
     # Check if 'category' is a regular or nested field
@@ -40,17 +41,17 @@ for table in tables:
     if category_structure == 'regular':
         query = f"""
         SELECT category 
-        FROM `{table}`
+        FROM `{table_id}`
         LIMIT 10
         """
     elif category_structure == 'nested':
         query = f"""
         SELECT details.category 
-        FROM `{table}`
+        FROM `{table_id}`
         LIMIT 10
         """
     else:
-        print(f"'category' field not found in {table}")
+        print(f"'category' field not found in {table_id}")
         continue
     
     # Execute the query if the 'category' field is found
@@ -58,8 +59,8 @@ for table in tables:
         query_job = client.query(query)
         results = query_job.result()
         
-        print(f"Results from {table}:")
+        print(f"Results from {table_id}:")
         for row in results:
             print(row)
     except Exception as e:
-        print(f"Error running query on {table}: {e}")
+        print(f"Error running query on {table_id}: {e}")
